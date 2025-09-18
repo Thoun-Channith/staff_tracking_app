@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:staff_tracking_app/app/models/activity_log_model.dart';
 import 'package:location/location.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
@@ -16,6 +17,9 @@ class HomeController extends GetxController {
   StreamSubscription? _activityStreamSubscription;
   StreamSubscription? _userDocSubscription;
 
+  // --- NEW: GOOGLE MAPS CONTROLLER ---
+  GoogleMapController? mapController;
+
   // --- OBSERVABLES ---
   var isClockedIn = false.obs;
   var userName = ''.obs;
@@ -23,13 +27,23 @@ class HomeController extends GetxController {
   var currentAddress = 'Getting location...'.obs;
   var lastActivityTime = 'N/A'.obs;
   var dateFilter = 'Last 7 Days'.obs;
-  var activityLogs = <ActivityLog>[].obs;
+  final activityLogs = <ActivityLog>[].obs;
   var isUserDataLoading = true.obs;
+
+  // --- NEW: OBSERVABLE FOR MAP MARKERS ---
+  final markers = <Marker>{}.obs;
+
+  // --- NEW: INITIAL CAMERA POSITION ---
+  // Default to a central location, will be updated later
+  final initialCameraPosition = const CameraPosition(
+    target: LatLng(11.5564, 104.9282), // Phnom Penh, Cambodia
+    zoom: 14.0,
+  ).obs;
 
   @override
   void onInit() {
     super.onInit();
-    _fetchUserData();
+    _initializeUserStreams();
     _getCurrentLocationAndAddress();
   }
 
@@ -37,22 +51,33 @@ class HomeController extends GetxController {
   void onClose() {
     _activityStreamSubscription?.cancel();
     _userDocSubscription?.cancel();
+    mapController?.dispose();
     super.onClose();
   }
 
-  void _fetchUserData() {
-    isUserDataLoading.value = true;
+  // Called from the view when the map is created
+  void onMapCreated(GoogleMapController controller) {
+    mapController = controller;
+  }
+
+  void _initializeUserStreams() {
     final user = _auth.currentUser;
     if (user != null) {
       userName.value = user.displayName ?? user.email ?? 'Staff Member';
-      _userDocSubscription =
-          _firestore.collection('users').doc(user.uid).snapshots().listen((doc) {
-            if (doc.exists && doc.data() != null) {
-              userName.value = doc.data()!['name'] ?? user.email ?? 'Staff Member';
-              isClockedIn.value = doc.data()!['isCheckedIn'] ?? false;
-            }
-            isUserDataLoading.value = false;
-          });
+
+      _userDocSubscription = _firestore
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen((doc) {
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          userName.value = data['name'] ?? user.email ?? 'Staff Member';
+          isClockedIn.value = data['isCheckedIn'] ?? false;
+        }
+        isUserDataLoading.value = false;
+      });
+
       _listenToActivityLogs();
     } else {
       isUserDataLoading.value = false;
@@ -84,26 +109,74 @@ class HomeController extends GetxController {
     _activityStreamSubscription = query.snapshots().listen((snapshot) {
       List<ActivityLog> newLogs = snapshot.docs.map((doc) {
         final log = ActivityLog.fromFirestore(doc);
-        _fetchAddressForLog(log);
+
+        // --- MODIFICATION ---
+        // Only fetch the address if it's still the default "Loading..." value.
+        // This prevents re-fetching addresses for logs we already have.
+        if (log.address.value == 'Loading address...') {
+          _fetchAddressForLog(log);
+        }
         return log;
       }).toList();
 
       activityLogs.value = newLogs;
 
+      // This function from the previous step will still work perfectly.
+      // I've removed it from this snippet for clarity, but you should keep it in your code.
+      // _updateMapMarkers();
+
       if (activityLogs.isNotEmpty) {
+        // --- MODIFICATION: Added a safety check for the timestamp ---
+        final firstLogTimestamp = activityLogs.first.timestamp;
         lastActivityTime.value =
-            DateFormat('hh:mm a').format(activityLogs.first.timestamp.toDate());
-      } else {
+            DateFormat('hh:mm a').format(firstLogTimestamp.toDate());
+            } else {
         lastActivityTime.value = 'N/A';
       }
     });
   }
 
+  // --- NEW: METHOD TO UPDATE MAP MARKERS ---
+  void _updateMapMarkers() {
+    if (activityLogs.isEmpty) {
+      markers.clear();
+      return;
+    }
+
+    final newMarkers = <Marker>{};
+    for (var log in activityLogs) {
+      final formattedTime =
+          DateFormat('hh:mm a').format(log.timestamp.toDate());
+      final marker = Marker(
+        markerId: MarkerId(log.timestamp.toString()),
+        position: LatLng(log.location.latitude, log.location.longitude),
+        infoWindow: InfoWindow(
+          title: log.status == 'checked-in' ? 'Checked In' : 'Checked Out',
+          snippet: formattedTime,
+        ),
+        icon: log.status == 'checked-in'
+            ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen)
+            : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      );
+      newMarkers.add(marker);
+    }
+
+    markers.value = newMarkers;
+
+    // --- NEW: Animate camera to the latest activity ---
+    final latestLog = activityLogs.first;
+    mapController?.animateCamera(
+      CameraUpdate.newLatLng(
+        LatLng(latestLog.location.latitude, latestLog.location.longitude),
+      ),
+    );
+  }
+
   Future<void> _fetchAddressForLog(ActivityLog log) async {
     try {
-      List<geocoding.Placemark> placemarks = await geocoding
-          .placemarkFromCoordinates(
-          log.location.latitude, log.location.longitude);
+      List<geocoding.Placemark> placemarks =
+          await geocoding.placemarkFromCoordinates(
+              log.location.latitude, log.location.longitude);
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         log.address.value = "${place.street}, ${place.locality}";
@@ -115,21 +188,27 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- MISSING METHODS ARE NOW INCLUDED ---
-
   Future<void> _getCurrentLocationAndAddress() async {
     try {
       LocationData? locationData = await _getCurrentLocation();
       if (locationData != null &&
           locationData.latitude != null &&
           locationData.longitude != null) {
-        List<geocoding.Placemark> placemarks = await geocoding
-            .placemarkFromCoordinates(
-            locationData.latitude!, locationData.longitude!);
+        // --- NEW: Update initial camera position to current location ---
+        initialCameraPosition.value = CameraPosition(
+          target: LatLng(locationData.latitude!, locationData.longitude!),
+          zoom: 16.0,
+        );
+        mapController?.animateCamera(
+            CameraUpdate.newCameraPosition(initialCameraPosition.value));
+
+        List<geocoding.Placemark> placemarks =
+            await geocoding.placemarkFromCoordinates(
+                locationData.latitude!, locationData.longitude!);
         if (placemarks.isNotEmpty) {
           final place = placemarks.first;
           currentAddress.value =
-          "${place.street}, ${place.locality}, ${place.country}";
+              "${place.street}, ${place.locality}, ${place.country}";
         } else {
           currentAddress.value = "Address not found.";
         }
@@ -162,7 +241,7 @@ class HomeController extends GetxController {
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .set({'isCheckedIn': newStatus}, SetOptions(merge: true));
+          .update({'isCheckedIn': newStatus});
 
       await _firestore
           .collection('users')
@@ -222,4 +301,3 @@ class HomeController extends GetxController {
     Get.offAllNamed(Routes.LOGIN);
   }
 }
-

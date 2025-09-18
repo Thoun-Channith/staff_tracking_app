@@ -1,1 +1,25 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"joinery-worx","appId":"1:292388889288:android:7749454c0728d966523bfd","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"joinery-worx","configurations":{"android":"1:292388889288:android:7749454c0728d966523bfd","ios":"1:292388889288:ios:198cb213bd6b3a8c523bfd"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "joinery-worx",
+          "appId": "1:292388889288:android:7749454c0728d966523bfd",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "joinery-worx",
+          "configurations": {
+            "android": "1:292388889288:android:7749454c0728d966523bfd",
+            "ios": "1:292388889288:ios:198cb213bd6b3a8c523bfd"
+          }
+        }
+      }
+    }
+  },
+  "functions": {
+    "predeploy": []
+  }
+}

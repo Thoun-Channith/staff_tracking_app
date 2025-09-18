@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:staff_tracking_app/app/modules/home/home_controller.dart';
 import 'package:staff_tracking_app/app/models/activity_log_model.dart';
@@ -28,11 +29,15 @@ class HomeView extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // THIS IS THE FIX: Show a loading indicator while user data is fetched
               Obx(() => controller.isUserDataLoading.value
                   ? _buildLoadingIndicator()
                   : _buildWelcomeCard(theme)),
               const SizedBox(height: 20),
+
+              // --- NEW: MAP VIEW ---
+              _buildMapView(),
+              const SizedBox(height: 20),
+
               _buildCheckInButton(),
               const SizedBox(height: 24),
               _buildActivityHeader(theme),
@@ -45,11 +50,32 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // NEW WIDGET for the loading state.
+  // --- NEW: WIDGET TO BUILD THE GOOGLE MAP ---
+  Widget _buildMapView() {
+    return Card(
+      clipBehavior: Clip.antiAlias, // Ensures the map respects the card's rounded corners
+      elevation: 2,
+      child: AspectRatio(
+        aspectRatio: 16 / 9, // A common aspect ratio for maps
+        child: Obx(() => GoogleMap(
+          initialCameraPosition: controller.initialCameraPosition.value,
+          onMapCreated: (GoogleMapController mapCtrl) {
+            controller.onMapCreated(mapCtrl);
+          },
+          markers: Set<Marker>.of(controller.markers), // Use the markers from the controller
+          myLocationEnabled: true, // Shows the blue dot for the user's current location
+          myLocationButtonEnabled: true, // Adds a button to center on the user's location
+          mapType: MapType.normal,
+        )),
+      ),
+    );
+  }
+
+
   Widget _buildLoadingIndicator() {
     return const Card(
       child: SizedBox(
-        height: 180, // Give it a fixed height to prevent layout jumps
+        height: 180,
         child: Center(
           child: CircularProgressIndicator(),
         ),
@@ -58,7 +84,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildWelcomeCard(ThemeData theme) {
-    // This widget's code is unchanged
     return Card(
       elevation: 2,
       child: Padding(
@@ -120,7 +145,6 @@ class HomeView extends GetView<HomeController> {
         String? valueText,
         Widget? valueWidget,
         Color? iconColor}) {
-    // This widget's code is unchanged
     return Row(
       children: [
         Icon(icon, color: iconColor ?? theme.colorScheme.secondary, size: 20),
@@ -138,7 +162,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildCheckInButton() {
-    // This widget's code is unchanged
     return Obx(
           () => ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
@@ -171,7 +194,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildActivityHeader(ThemeData theme) {
-    // This widget's code is unchanged
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -206,7 +228,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildRecentActivityList(ThemeData theme) {
-    // This widget's code is unchanged
     return Obx(() {
       if (controller.activityLogs.isEmpty) {
         return Center(
@@ -265,4 +286,3 @@ class HomeView extends GetView<HomeController> {
     });
   }
 }
-

@@ -3,6 +3,8 @@
         android:label="staff_tracking_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyCTPi68yD-oPBOaLiIEzdU1At2Rb-1PBpw"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
