@@ -3,22 +3,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:staff_tracking_app/app/models/activity_log_model.dart';
 import 'package:location/location.dart';
-import 'package:geocoding/geocoding.dart' as geocoding;
+import 'package:staff_tracking_app/app/models/activity_log_model.dart';
+import 'package:staff_tracking_app/app/routes/app_pages.dart';
 import 'package:intl/intl.dart';
-
-import '../../routes/app_pages.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 
 class HomeController extends GetxController {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  StreamSubscription? _activityStreamSubscription;
-  StreamSubscription? _userDocSubscription;
+  final Location _location = Location();
 
-  // --- NEW: GOOGLE MAPS CONTROLLER ---
-  GoogleMapController? mapController;
+  StreamSubscription<LocationData>? _locationSubscription;
+  StreamSubscription? _activityStreamSubscription;
 
   // --- OBSERVABLES ---
   var isClockedIn = false.obs;
@@ -26,250 +23,124 @@ class HomeController extends GetxController {
   var isLoading = false.obs;
   var currentAddress = 'Getting location...'.obs;
   var lastActivityTime = 'N/A'.obs;
-  var dateFilter = 'Last 7 Days'.obs;
   final activityLogs = <ActivityLog>[].obs;
-  var isUserDataLoading = true.obs;
-
-  // --- NEW: OBSERVABLE FOR MAP MARKERS ---
-  final markers = <Marker>{}.obs;
-
-  // --- NEW: INITIAL CAMERA POSITION ---
-  // Default to a central location, will be updated later
-  final initialCameraPosition = const CameraPosition(
-    target: LatLng(11.5564, 104.9282), // Phnom Penh, Cambodia
-    zoom: 14.0,
-  ).obs;
 
   @override
   void onInit() {
     super.onInit();
-    _initializeUserStreams();
-    _getCurrentLocationAndAddress();
+    _initializeUser();
   }
 
   @override
   void onClose() {
+    _locationSubscription?.cancel();
     _activityStreamSubscription?.cancel();
-    _userDocSubscription?.cancel();
-    mapController?.dispose();
     super.onClose();
   }
 
-  // Called from the view when the map is created
-  void onMapCreated(GoogleMapController controller) {
-    mapController = controller;
-  }
-
-  void _initializeUserStreams() {
+  void _initializeUser() {
     final user = _auth.currentUser;
     if (user != null) {
-      userName.value = user.displayName ?? user.email ?? 'Staff Member';
-
-      _userDocSubscription = _firestore
-          .collection('users')
-          .doc(user.uid)
-          .snapshots()
-          .listen((doc) {
-        if (doc.exists && doc.data() != null) {
-          final data = doc.data()!;
-          userName.value = data['name'] ?? user.email ?? 'Staff Member';
-          isClockedIn.value = data['isCheckedIn'] ?? false;
-        }
-        isUserDataLoading.value = false;
-      });
-
+      _checkInitialStatus();
       _listenToActivityLogs();
-    } else {
-      isUserDataLoading.value = false;
     }
   }
 
-  void setFilter(String newFilter) {
-    if (dateFilter.value == newFilter) return;
-    dateFilter.value = newFilter;
-    _listenToActivityLogs();
+  Future<void> _checkInitialStatus() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      userName.value = user.displayName ?? userDoc.data()?['name'] ?? user.email ?? "Staff";
+      if (userDoc.exists && userDoc.data()!['isClockedIn'] == true) {
+        isClockedIn.value = true;
+        _startLocationUpdates();
+      }
+    }
   }
 
   void _listenToActivityLogs() {
-    _activityStreamSubscription?.cancel();
     final user = _auth.currentUser;
     if (user == null) return;
 
+    _activityStreamSubscription?.cancel();
     Query query = _firestore
         .collection('users')
         .doc(user.uid)
         .collection('activity_logs')
-        .orderBy('timestamp', descending: true);
-
-    if (dateFilter.value == 'Last 7 Days') {
-      DateTime sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-      query = query.where('timestamp', isGreaterThanOrEqualTo: sevenDaysAgo);
-    }
+        .orderBy('timestamp', descending: true)
+        .limit(10);
 
     _activityStreamSubscription = query.snapshots().listen((snapshot) {
-      List<ActivityLog> newLogs = snapshot.docs.map((doc) {
-        final log = ActivityLog.fromFirestore(doc);
-
-        // --- MODIFICATION ---
-        // Only fetch the address if it's still the default "Loading..." value.
-        // This prevents re-fetching addresses for logs we already have.
-        if (log.address.value == 'Loading address...') {
-          _fetchAddressForLog(log);
-        }
-        return log;
-      }).toList();
-
-      activityLogs.value = newLogs;
-
-      // This function from the previous step will still work perfectly.
-      // I've removed it from this snippet for clarity, but you should keep it in your code.
-      // _updateMapMarkers();
-
+      activityLogs.value = snapshot.docs.map((doc) => ActivityLog.fromFirestore(doc)).toList();
       if (activityLogs.isNotEmpty) {
-        // --- MODIFICATION: Added a safety check for the timestamp ---
         final firstLogTimestamp = activityLogs.first.timestamp;
-        lastActivityTime.value =
-            DateFormat('hh:mm a').format(firstLogTimestamp.toDate());
-            } else {
+        lastActivityTime.value = DateFormat('hh:mm a').format(firstLogTimestamp.toDate());
+      } else {
         lastActivityTime.value = 'N/A';
       }
     });
   }
 
-  // --- NEW: METHOD TO UPDATE MAP MARKERS ---
-  void _updateMapMarkers() {
-    if (activityLogs.isEmpty) {
-      markers.clear();
-      return;
-    }
+  void clockIn() async {
+    isLoading.value = true;
+    await _updateClockInStatus(true);
+    _startLocationUpdates();
+    isClockedIn.value = true;
+    isLoading.value = false;
+    Get.snackbar('Success', 'You are now clocked in.', backgroundColor: Colors.green, colorText: Colors.white);
+  }
 
-    final newMarkers = <Marker>{};
-    for (var log in activityLogs) {
-      final formattedTime =
-          DateFormat('hh:mm a').format(log.timestamp.toDate());
-      final marker = Marker(
-        markerId: MarkerId(log.timestamp.toString()),
-        position: LatLng(log.location.latitude, log.location.longitude),
-        infoWindow: InfoWindow(
-          title: log.status == 'checked-in' ? 'Checked In' : 'Checked Out',
-          snippet: formattedTime,
-        ),
-        icon: log.status == 'checked-in'
-            ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen)
-            : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      );
-      newMarkers.add(marker);
-    }
+  void clockOut() async {
+    isLoading.value = true;
+    await _updateClockInStatus(false);
+    _locationSubscription?.cancel();
+    isClockedIn.value = false;
+    isLoading.value = false;
+    Get.snackbar('Success', 'You have clocked out.', backgroundColor: Colors.red, colorText: Colors.white);
+  }
 
-    markers.value = newMarkers;
-
-    // --- NEW: Animate camera to the latest activity ---
-    final latestLog = activityLogs.first;
-    mapController?.animateCamera(
-      CameraUpdate.newLatLng(
-        LatLng(latestLog.location.latitude, latestLog.location.longitude),
-      ),
+  void _startLocationUpdates() {
+    _locationSubscription?.cancel();
+    _locationSubscription = _location.onLocationChanged.listen(
+          (LocationData currentLocation) {
+        if (isClockedIn.value) {
+          _updateLiveLocation(currentLocation);
+        }
+      },
     );
   }
 
-  Future<void> _fetchAddressForLog(ActivityLog log) async {
-    try {
-      List<geocoding.Placemark> placemarks =
-          await geocoding.placemarkFromCoordinates(
-              log.location.latitude, log.location.longitude);
-      if (placemarks.isNotEmpty) {
-        final place = placemarks.first;
-        log.address.value = "${place.street}, ${place.locality}";
-      } else {
-        log.address.value = "Address not found.";
-      }
-    } catch (e) {
-      log.address.value = "Could not get address.";
-    }
-  }
-
-  Future<void> _getCurrentLocationAndAddress() async {
-    try {
-      LocationData? locationData = await _getCurrentLocation();
-      if (locationData != null &&
-          locationData.latitude != null &&
-          locationData.longitude != null) {
-        // --- NEW: Update initial camera position to current location ---
-        initialCameraPosition.value = CameraPosition(
-          target: LatLng(locationData.latitude!, locationData.longitude!),
-          zoom: 16.0,
-        );
-        mapController?.animateCamera(
-            CameraUpdate.newCameraPosition(initialCameraPosition.value));
-
-        List<geocoding.Placemark> placemarks =
-            await geocoding.placemarkFromCoordinates(
-                locationData.latitude!, locationData.longitude!);
-        if (placemarks.isNotEmpty) {
-          final place = placemarks.first;
-          currentAddress.value =
-              "${place.street}, ${place.locality}, ${place.country}";
-        } else {
-          currentAddress.value = "Address not found.";
-        }
-      }
-    } catch (e) {
-      currentAddress.value = "Could not get location.";
-    }
-  }
-
-  Future<void> toggleCheckInStatus() async {
-    isLoading.value = true;
+  Future<void> _updateLiveLocation(LocationData locationData) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      Get.snackbar('Error', 'You are not logged in.');
-      isLoading.value = false;
+    if (user != null && locationData.latitude != null && locationData.longitude != null) {
+      await _firestore.collection('users').doc(user.uid).update({
+        'currentLocation': GeoPoint(locationData.latitude!, locationData.longitude!),
+        'lastSeen': Timestamp.now(),
+      });
+    }
+  }
+
+  Future<void> _updateClockInStatus(bool status) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final locationData = await _getCurrentLocation();
+    if (locationData == null) {
+      Get.snackbar("Error", "Could not get location. Please enable GPS.");
       return;
     }
 
-    try {
-      final newStatus = !isClockedIn.value;
-      LocationData? locationData = await _getCurrentLocation();
+    await _firestore.collection('users').doc(user.uid).update({
+      'isClockedIn': status,
+      'lastSeen': Timestamp.now(),
+      'currentLocation': GeoPoint(locationData.latitude!, locationData.longitude!),
+    });
 
-      if (locationData == null) {
-        Get.snackbar('Location Error',
-            'Could not get location. Please enable GPS and try again.');
-        isLoading.value = false;
-        return;
-      }
-
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .update({'isCheckedIn': newStatus});
-
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('activity_logs')
-          .add({
-        'status': newStatus ? 'checked-in' : 'checked-out',
-        'timestamp': FieldValue.serverTimestamp(),
-        'location': GeoPoint(locationData.latitude!, locationData.longitude!),
-      });
-
-      _getCurrentLocationAndAddress();
-
-      Get.snackbar(
-        'Success',
-        'You have successfully ${newStatus ? "checked in" : "checked out"}.',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
-    } catch (e) {
-      Get.snackbar('Error', 'An error occurred: ${e.toString()}',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white);
-    } finally {
-      isLoading.value = false;
-    }
+    await _firestore.collection('users').doc(user.uid).collection('activity_logs').add({
+      'timestamp': FieldValue.serverTimestamp(),
+      'status': status ? 'clock-in' : 'clock-out',
+      'location': GeoPoint(locationData.latitude!, locationData.longitude!),
+    });
   }
 
   Future<LocationData?> _getCurrentLocation() async {
@@ -280,24 +151,42 @@ class HomeController extends GetxController {
     serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await location.requestService();
-      if (!serviceEnabled) {
-        return null;
-      }
+      if (!serviceEnabled) return null;
     }
 
     permissionGranted = await location.hasPermission();
     if (permissionGranted == PermissionStatus.denied) {
       permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) {
-        return null;
-      }
+      if (permissionGranted != PermissionStatus.granted) return null;
     }
 
-    return await location.getLocation();
+    final currentLoc = await location.getLocation();
+    _updateAddress(currentLoc);
+    return currentLoc;
+  }
+
+  Future<void> _updateAddress(LocationData locationData) async {
+    try {
+      List<geocoding.Placemark> placemarks =
+      await geocoding.placemarkFromCoordinates(
+          locationData.latitude!, locationData.longitude!);
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        currentAddress.value = "${place.street}, ${place.locality}";
+      } else {
+        currentAddress.value = "Address not found.";
+      }
+    } catch (e) {
+      currentAddress.value = "Could not get address.";
+    }
   }
 
   Future<void> signOut() async {
+    if (isClockedIn.value) {
+      clockOut();
+    }
     await _auth.signOut();
     Get.offAllNamed(Routes.LOGIN);
   }
 }
+
