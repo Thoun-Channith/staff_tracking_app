@@ -221,5 +221,7 @@ class HomeController extends GetxController {
     await _auth.signOut();
     Get.offAllNamed(Routes.LOGIN);
   }
+
+  void clockIn() {}
 }
 
