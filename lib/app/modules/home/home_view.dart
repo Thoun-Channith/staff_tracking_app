@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:staff_tracking_app/app/modules/home/home_controller.dart';
 import 'package:staff_tracking_app/app/models/activity_log_model.dart';
@@ -28,10 +29,11 @@ class HomeView extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // THIS IS THE FIX: Show a loading indicator while user data is fetched
-              Obx(() => controller.isUserDataLoading.value
+              Obx(() => controller.isLoading.value
                   ? _buildLoadingIndicator()
                   : _buildWelcomeCard(theme)),
+              const SizedBox(height: 20),
+              _buildMapView(),
               const SizedBox(height: 20),
               _buildCheckInButton(),
               const SizedBox(height: 24),
@@ -45,11 +47,30 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // NEW WIDGET for the loading state.
+  Widget _buildMapView() {
+    return SizedBox(
+      height: 250,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12.0),
+        child: Obx(
+              () => GoogleMap(
+            mapType: MapType.normal,
+            initialCameraPosition: controller.initialCameraPosition.value,
+            onMapCreated: controller.onMapCreated,
+            markers: controller.markers.value,
+            myLocationButtonEnabled: false,
+            myLocationEnabled: false,
+            zoomControlsEnabled: false,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadingIndicator() {
     return const Card(
       child: SizedBox(
-        height: 180, // Give it a fixed height to prevent layout jumps
+        height: 180,
         child: Center(
           child: CircularProgressIndicator(),
         ),
@@ -58,7 +79,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildWelcomeCard(ThemeData theme) {
-    // This widget's code is unchanged
     return Card(
       elevation: 2,
       child: Padding(
@@ -120,7 +140,6 @@ class HomeView extends GetView<HomeController> {
         String? valueText,
         Widget? valueWidget,
         Color? iconColor}) {
-    // This widget's code is unchanged
     return Row(
       children: [
         Icon(icon, color: iconColor ?? theme.colorScheme.secondary, size: 20),
@@ -137,8 +156,8 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
+  // THIS WIDGET IS NOW UPDATED WITH THE LOADING INDICATOR
   Widget _buildCheckInButton() {
-    // This widget's code is unchanged
     return Obx(
           () => ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
@@ -148,10 +167,12 @@ class HomeView extends GetView<HomeController> {
           padding: const EdgeInsets.symmetric(vertical: 16),
           textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        onPressed: controller.isLoading.value
+        // Disable the button when it's loading
+        onPressed: controller.isButtonLoading.value
             ? null
             : () => controller.toggleCheckInStatus(),
-        icon: controller.isLoading.value
+        // Show a progress indicator when loading, otherwise show the icon
+        icon: controller.isButtonLoading.value
             ? Container(
           width: 24,
           height: 24,
@@ -171,7 +192,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildActivityHeader(ThemeData theme) {
-    // This widget's code is unchanged
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -206,7 +226,6 @@ class HomeView extends GetView<HomeController> {
   }
 
   Widget _buildRecentActivityList(ThemeData theme) {
-    // This widget's code is unchanged
     return Obx(() {
       if (controller.activityLogs.isEmpty) {
         return Center(
@@ -225,8 +244,9 @@ class HomeView extends GetView<HomeController> {
         itemBuilder: (context, index) {
           final ActivityLog log = controller.activityLogs[index];
           final isCheckIn = log.status == 'checked-in';
-          final formattedTime =
-          DateFormat('EEE, MMM d, hh:mm a').format(log.timestamp.toDate());
+          final formattedTime = log.timestamp != null
+              ? DateFormat('EEE, MMM d, hh:mm a').format(log.timestamp!.toDate())
+              : 'No timestamp';
 
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 4),

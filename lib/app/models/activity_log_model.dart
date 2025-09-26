@@ -2,25 +2,26 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 
 class ActivityLog {
-  final String status;
-  final Timestamp timestamp;
-  final GeoPoint location;
-  // Make the address an observable string so the UI can react when it's loaded.
+  final Timestamp? timestamp;
+  final GeoPoint? location;
+  final String? status;
+  // This is the key change to make the address reactive
   final RxString address = 'Loading address...'.obs;
 
   ActivityLog({
-    required this.status,
-    required this.timestamp,
-    required this.location,
+    this.timestamp,
+    this.location,
+    this.status,
   });
 
-  // A factory constructor to easily create an ActivityLog from a Firestore document
   factory ActivityLog.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    Map data = doc.data() as Map;
     return ActivityLog(
-      status: data['status'] ?? 'unknown',
-      timestamp: data['timestamp'] ?? Timestamp.now(),
-      location: data['location'] ?? const GeoPoint(0, 0),
+      timestamp: data['timestamp'],
+      // Corrected field name to match your Firestore data
+      location: data['location'],
+      status: data['status'],
     );
   }
 }
+
