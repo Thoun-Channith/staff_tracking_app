@@ -174,7 +174,7 @@ class LoginView extends GetView<AuthController> {
   }
 
   // A helper widget to build the app icon and title.
-  Widget _buildAppIcon() {
+  Widg_buildAppIcon() {
     return Column(
       children: [
         Container(
