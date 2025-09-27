@@ -38,6 +38,7 @@ dependencies:
   # Location Services
   location: ^8.0.1
   google_maps_flutter: ^2.5.3
+  collection: ^1.18.0
   # State Management & Utilities
   get: ^4.6.6
   permission_handler: ^12.0.1

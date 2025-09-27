@@ -15,7 +15,7 @@ class ActivityLog {
   });
 
   factory ActivityLog.fromFirestore(DocumentSnapshot doc) {
-    Map data = doc.data() as Map;
+    Map data = doc.data() as Map<String, dynamic>;
     return ActivityLog(
       timestamp: data['timestamp'],
       // Corrected field name to match your Firestore data
@@ -24,4 +24,3 @@ class ActivityLog {
     );
   }
 }
-

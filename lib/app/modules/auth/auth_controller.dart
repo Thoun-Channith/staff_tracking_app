@@ -51,24 +51,29 @@ class AuthController extends GetxController {
   }
 
   Future<void> createUser() async {
-    // ... (your existing validation logic)
     isLoading.value = true;
     try {
-      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential =
+      await _auth.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
       final user = userCredential.user;
       if (user != null) {
         await user.updateDisplayName(nameController.text.trim());
-        await _firestore.collection('users').doc(user.uid).set({
-          'name': nameController.text.trim(),
-          'email': emailController.text.trim(),
-          'uid': user.uid,
-          'isCheckedIn': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        await _initializeNotifications(user.uid); // Run after signup
+        try {
+          await _firestore.collection('users').doc(user.uid).set({
+            'name': nameController.text.trim(),
+            'email': emailController.text.trim(),
+            'uid': user.uid,
+            'isCheckedIn': false,
+            'createdAt': FieldValue.serverTimestamp(),
+            'role': 'staff',
+          });
+          await _initializeNotifications(user.uid);
+        } on FirebaseException catch (e) {
+          Get.snackbar('Error Saving Data', 'An error occurred while saving your information. Please try again.');
+        }
       }
     } on FirebaseAuthException catch (e) {
       Get.snackbar('Sign Up Failed', e.message ?? 'An unknown error occurred.');
@@ -78,7 +83,6 @@ class AuthController extends GetxController {
   }
 
   Future<void> login() async {
-    // ... (your existing validation logic)
     isLoading.value = true;
     try {
       final userCredential = await _auth.signInWithEmailAndPassword(
@@ -87,7 +91,7 @@ class AuthController extends GetxController {
       );
       final user = userCredential.user;
       if (user != null) {
-        await _initializeNotifications(user.uid); // Run after login
+        await _initializeNotifications(user.uid);
       }
     } on FirebaseAuthException catch (e) {
       Get.snackbar('Login Failed', e.message ?? 'An unknown error occurred.');

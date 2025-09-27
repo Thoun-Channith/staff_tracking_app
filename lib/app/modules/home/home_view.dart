@@ -57,10 +57,12 @@ class HomeView extends GetView<HomeController> {
             mapType: MapType.normal,
             initialCameraPosition: controller.initialCameraPosition.value,
             onMapCreated: controller.onMapCreated,
-            markers: controller.markers.value,
+            markers: Set<Marker>.of(controller.markers),
             myLocationButtonEnabled: false,
             myLocationEnabled: false,
-            zoomControlsEnabled: false,
+            // --- FIXES ARE HERE ---
+            zoomControlsEnabled: true, // Show the + and - buttons
+            zoomGesturesEnabled: true, // Allow pinch-to-zoom
           ),
         ),
       ),
@@ -144,7 +146,9 @@ class HomeView extends GetView<HomeController> {
       children: [
         Icon(icon, color: iconColor ?? theme.colorScheme.secondary, size: 20),
         const SizedBox(width: 12),
-        Text('$label ', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+        Text('$label ',
+            style: theme.textTheme.bodyLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
         Expanded(
           child: valueWidget ??
               Text(
@@ -156,7 +160,6 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // THIS WIDGET IS NOW UPDATED WITH THE LOADING INDICATOR
   Widget _buildCheckInButton() {
     return Obx(
           () => ElevatedButton.icon(
@@ -167,11 +170,9 @@ class HomeView extends GetView<HomeController> {
           padding: const EdgeInsets.symmetric(vertical: 16),
           textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // Disable the button when it's loading
         onPressed: controller.isButtonLoading.value
             ? null
             : () => controller.toggleCheckInStatus(),
-        // Show a progress indicator when loading, otherwise show the icon
         icon: controller.isButtonLoading.value
             ? Container(
           width: 24,
@@ -182,9 +183,8 @@ class HomeView extends GetView<HomeController> {
             strokeWidth: 3,
           ),
         )
-            : Icon(controller.isClockedIn.value
-            ? Icons.logout
-            : Icons.login),
+            : Icon(
+            controller.isClockedIn.value ? Icons.logout : Icons.login),
         label: Text(
             controller.isClockedIn.value ? 'Check Out' : 'Check In'),
       ),
@@ -215,9 +215,11 @@ class HomeView extends GetView<HomeController> {
             children: [
               Text(
                 controller.dateFilter.value,
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.secondary),
+                style: theme.textTheme.bodyLarge
+                    ?.copyWith(color: theme.colorScheme.secondary),
               ),
-              Icon(Icons.arrow_drop_down, color: theme.colorScheme.secondary),
+              Icon(Icons.arrow_drop_down,
+                  color: theme.colorScheme.secondary),
             ],
           ),
         )),
@@ -244,6 +246,7 @@ class HomeView extends GetView<HomeController> {
         itemBuilder: (context, index) {
           final ActivityLog log = controller.activityLogs[index];
           final isCheckIn = log.status == 'checked-in';
+
           final formattedTime = log.timestamp != null
               ? DateFormat('EEE, MMM d, hh:mm a').format(log.timestamp!.toDate())
               : 'No timestamp';
@@ -265,7 +268,8 @@ class HomeView extends GetView<HomeController> {
                         () => Row(
                       children: [
                         Icon(Icons.location_on,
-                            size: 14, color: theme.textTheme.bodySmall?.color),
+                            size: 14,
+                            color: theme.textTheme.bodySmall?.color),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -285,4 +289,3 @@ class HomeView extends GetView<HomeController> {
     });
   }
 }
-

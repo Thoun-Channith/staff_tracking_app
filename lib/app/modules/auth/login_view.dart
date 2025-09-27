@@ -42,9 +42,10 @@ class LoginView extends GetView<AuthController> {
                 children: [
                   // App Icon Section
                   const SizedBox(height: 74),
-                  // _buildAppIcon(),
-                  Image.asset("assets/icons/O-logo.png", height: 120,),
-
+                  Image.asset(
+                    "assets/icons/O-logo.png",
+                    height: 120,
+                  ),
                   const SizedBox(height: 25),
                   SvgPicture.asset(
                     'assets/icons-svg/text-logo.svg',
@@ -67,7 +68,7 @@ class LoginView extends GetView<AuthController> {
                         padding: const EdgeInsets.all(24.0),
                         // Obx makes the widget rebuild when isLogin changes.
                         child: Obx(
-                          () => Column(
+                              () => Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
@@ -138,7 +139,6 @@ class LoginView extends GetView<AuthController> {
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-
                                   ),
                                 ),
                               ),
@@ -148,7 +148,7 @@ class LoginView extends GetView<AuthController> {
                               Center(
                                 child: TextButton(
                                   onPressed: () =>
-                                      isLogin.value = !isLogin.value,
+                                  isLogin.value = !isLogin.value,
                                   child: Text(
                                     isLogin.value
                                         ? "Don't have an account? Sign Up"
@@ -170,67 +170,6 @@ class LoginView extends GetView<AuthController> {
           ),
         ],
       ),
-    );
-  }
-
-  // A helper widget to build the app icon and title.
-  Column widg_buildAppIcon() {
-    return Column(
-      children: [
-        Container(
-          width: 96,
-          height: 96,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6A67F0),
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  child: Container(
-                    width: 32,
-                    height: 64,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF3D3BB1),
-                      borderRadius: BorderRadius.horizontal(
-                        left: Radius.circular(32),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'STAFF TRACKER',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 
@@ -273,7 +212,7 @@ class LoginView extends GetView<AuthController> {
   Widget _buildPasswordTextField() {
     // Obx rebuilds this widget when controller.isPasswordHidden changes.
     return Obx(
-      () => TextFormField(
+          () => TextFormField(
         controller: controller.passwordController,
         obscureText: controller.isPasswordHidden.value,
         decoration: InputDecoration(
